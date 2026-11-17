@@ -1,0 +1,2024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DINO CLASH: Linus & Ava — 16-Bit Arcade Action</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0b0d14;
+            color: #ffffff;
+            font-family: 'Press Start 2P', monospace;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            width: 100vw;
+        }
+        #game-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 1024px;
+            aspect-ratio: 16 / 9;
+            max-height: 76vh;
+            background: #111;
+            border: 4px solid #333c57;
+            border-radius: 12px;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.9), 0 0 20px rgba(56, 189, 248, 0.25);
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        /* Subtle CRT scanline overlay */
+        #crt-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.18) 50%
+            );
+            background-size: 100% 4px;
+            z-index: 5;
+        }
+        .arcade-btn {
+            transition: transform 0.06s ease, filter 0.1s ease;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.7), inset 0 2px 2px rgba(255,255,255,0.4);
+        }
+        .arcade-btn:active, .arcade-btn.pressed {
+            transform: translateY(3px) scale(0.96);
+            box-shadow: 0 1px 0 rgba(0,0,0,0.7), inset 0 1px 1px rgba(255,255,255,0.3);
+            filter: brightness(1.2);
+        }
+        @media (max-height: 600px) {
+            #game-wrapper {
+                max-height: 70vh;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-950 flex flex-col items-center justify-between py-2 px-2">
+
+    <!-- Top Header / Mute & Quick Info -->
+    <div class="w-full max-w-[1024px] flex items-center justify-between px-2 py-1 text-[10px] sm:text-xs text-amber-300">
+        <div class="flex items-center gap-2">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+            <span class="tracking-wider drop-shadow">DINO CLASH '94</span>
+        </div>
+        <div class="hidden md:flex items-center gap-4 text-slate-300 text-[10px]">
+            <span>MOVE: ARROWS/WASD</span>
+            <span>ATK: Z/J</span>
+            <span>SP1: X/K</span>
+            <span>SP2: C/L</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <button id="btn-switch-hero" class="hidden bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-400/50 rounded px-2.5 py-1 text-[9px] sm:text-[10px] cursor-pointer">
+                HERO SELECT
+            </button>
+            <button id="btn-mute" class="bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-400/50 rounded px-2.5 py-1 text-[9px] sm:text-[10px] cursor-pointer">
+                SFX: ON
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Arcade Screen Container -->
+    <div id="game-wrapper">
+        <canvas id="gameCanvas" width="640" height="360"></canvas>
+        <div id="crt-overlay"></div>
+    </div>
+
+    <!-- Bottom Arcade Controller Deck (Touch & Click Friendly) -->
+    <div id="controls-bar" class="w-full max-w-[1024px] flex items-center justify-between px-3 py-1.5 select-none">
+        <!-- D-Pad / Directional Pad -->
+        <div class="flex items-center gap-1.5 sm:gap-2">
+            <button id="pad-left" data-key="ArrowLeft" class="arcade-btn w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-slate-800 border-2 border-slate-500 flex items-center justify-center text-white text-base sm:text-lg font-bold">
+                ◀
+            </button>
+            <div class="flex flex-col gap-1.5">
+                <button id="pad-up" data-key="ArrowUp" class="arcade-btn w-12 h-9 sm:w-14 sm:h-10 rounded-xl bg-slate-800 border-2 border-slate-500 flex items-center justify-center text-amber-300 text-xs sm:text-sm font-bold">
+                    ▲
+                </button>
+                <button id="pad-down" data-key="ArrowDown" class="arcade-btn w-12 h-9 sm:w-14 sm:h-10 rounded-xl bg-slate-800 border-2 border-slate-500 flex items-center justify-center text-slate-300 text-xs sm:text-sm font-bold">
+                    ▼
+                </button>
+            </div>
+            <button id="pad-right" data-key="ArrowRight" class="arcade-btn w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-slate-800 border-2 border-slate-500 flex items-center justify-center text-white text-base sm:text-lg font-bold">
+                ▶
+            </button>
+        </div>
+
+        <!-- Action Buttons (SF2 Arcade 3-Button Layout) -->
+        <div class="flex items-center gap-2 sm:gap-3">
+            <button id="btn-atk" data-key="KeyZ" class="arcade-btn w-13 h-13 sm:w-16 sm:h-16 px-2 rounded-full bg-gradient-to-b from-red-500 to-red-700 border-2 border-red-300 flex flex-col items-center justify-center text-white">
+                <span class="text-xs sm:text-sm font-bold">ATK</span>
+                <span class="text-[8px] text-red-100 mt-0.5">[Z]</span>
+            </button>
+            <button id="btn-sp1" data-key="KeyX" class="arcade-btn w-13 h-13 sm:w-16 sm:h-16 px-2 rounded-full bg-gradient-to-b from-amber-400 to-amber-600 border-2 border-amber-200 flex flex-col items-center justify-center text-slate-950">
+                <span class="text-xs sm:text-sm font-bold">SP1</span>
+                <span class="text-[8px] text-amber-950 mt-0.5">[X]</span>
+            </button>
+            <button id="btn-sp2" data-key="KeyC" class="arcade-btn w-13 h-13 sm:w-16 sm:h-16 px-2 rounded-full bg-gradient-to-b from-cyan-400 to-blue-600 border-2 border-cyan-200 flex flex-col items-center justify-center text-white">
+                <span class="text-xs sm:text-sm font-bold">SP2</span>
+                <span class="text-[8px] text-cyan-100 mt-0.5">[C]</span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+    /**
+     * ============================================================================
+     * DINO CLASH: LINUS & AVA
+     * Authentic 16-bit SNES Arcade Side-Scrolling Action Beat-'Em-Up
+     * Single-file implementation with custom pixel-art renderer & Web Audio synth
+     * ============================================================================
+     */
+
+    // ----------------------------------------------------------------------------
+    // 1. RETRO 16-BIT WEB AUDIO SYNTHESIZER
+    // ----------------------------------------------------------------------------
+    class RetroAudio {
+        constructor() {
+            this.ctx = null;
+            this.muted = false;
+        }
+
+        init() {
+            if (!this.ctx) {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) {
+                    this.ctx = new AudioCtx();
+                }
+            }
+            if (this.ctx && this.ctx.state === 'suspended') {
+                this.ctx.resume();
+            }
+        }
+
+        toggleMute() {
+            this.muted = !this.muted;
+            return this.muted;
+        }
+
+        playTone(freq, endFreq, duration, type = 'square', volume = 0.14, delay = 0) {
+            if (this.muted) return;
+            this.init();
+            if (!this.ctx) return;
+
+            const now = this.ctx.currentTime + delay;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, now);
+            if (endFreq !== freq) {
+                osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), now + duration);
+            }
+
+            gain.gain.setValueAtTime(volume, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+
+            osc.start(now);
+            osc.stop(now + duration);
+        }
+
+        playNoise(duration, volume = 0.16, filterFreq = 900) {
+            if (this.muted) return;
+            this.init();
+            if (!this.ctx) return;
+
+            const bufferSize = this.ctx.sampleRate * duration;
+            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = buffer;
+
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = filterFreq;
+
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(volume, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.ctx.destination);
+
+            noise.start();
+        }
+
+        selectBlip() {
+            this.playTone(520, 780, 0.08, 'square', 0.12);
+        }
+
+        confirmHero() {
+            this.playTone(440, 440, 0.08, 'square', 0.14, 0);
+            this.playTone(554, 554, 0.08, 'square', 0.14, 0.07);
+            this.playTone(659, 659, 0.08, 'square', 0.14, 0.14);
+            this.playTone(880, 1174, 0.25, 'square', 0.16, 0.21);
+        }
+
+        jump() {
+            this.playTone(180, 460, 0.14, 'square', 0.1);
+        }
+
+        attackSwing() {
+            this.playNoise(0.08, 0.11, 1400);
+            this.playTone(260, 110, 0.08, 'triangle', 0.1);
+        }
+
+        hitImpact(heavy = false) {
+            this.playNoise(heavy ? 0.18 : 0.1, heavy ? 0.22 : 0.15, heavy ? 500 : 850);
+            this.playTone(heavy ? 150 : 220, 45, heavy ? 0.18 : 0.1, 'sawtooth', 0.16);
+        }
+
+        sonicBoom() {
+            this.playTone(680, 220, 0.24, 'sawtooth', 0.15);
+            this.playTone(920, 320, 0.22, 'square', 0.12);
+        }
+
+        flashKick() {
+            this.playTone(240, 960, 0.25, 'sawtooth', 0.16);
+            this.playNoise(0.2, 0.14, 1800);
+        }
+
+        lightningLegs() {
+            for (let i = 0; i < 4; i++) {
+                this.playTone(580 + i * 90, 320, 0.06, 'square', 0.11, i * 0.05);
+            }
+        }
+
+        kikoken() {
+            this.playTone(420, 840, 0.12, 'triangle', 0.14, 0);
+            this.playTone(740, 290, 0.22, 'sine', 0.16, 0.08);
+        }
+
+        dinoRoar() {
+            this.playTone(150, 58, 0.42, 'sawtooth', 0.2);
+            this.playNoise(0.38, 0.18, 360);
+        }
+
+        splash() {
+            this.playNoise(0.32, 0.2, 1100);
+            this.playTone(220, 90, 0.24, 'triangle', 0.12);
+        }
+
+        stageClear() {
+            const notes = [523, 659, 784, 1046, 784, 1046];
+            notes.forEach((n, idx) => {
+                this.playTone(n, n, idx === 5 ? 0.35 : 0.11, 'square', 0.14, idx * 0.12);
+            });
+        }
+
+        playerHurt() {
+            this.playTone(300, 95, 0.22, 'sawtooth', 0.18);
+        }
+    }
+
+    const sfx = new RetroAudio();
+
+    // ----------------------------------------------------------------------------
+    // 2. CANVAS & PIXEL-ART DRAWING HELPERS
+    // ----------------------------------------------------------------------------
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = 640;
+    const H = 360;
+    const GROUND_Y = 304;
+
+    // Crisp pixel rectangle helper with dark 16-bit outline option
+    function pxRect(x, y, w, h, fill, outline = null) {
+        const rx = Math.round(x);
+        const ry = Math.round(y);
+        const rw = Math.round(w);
+        const rh = Math.round(h);
+        if (outline) {
+            ctx.fillStyle = outline;
+            ctx.fillRect(rx - 1, ry - 1, rw + 2, rh + 2);
+        }
+        ctx.fillStyle = fill;
+        ctx.fillRect(rx, ry, rw, rh);
+    }
+
+    // Pixel text with heavy SNES drop shadow / outline
+    function drawPixelText(text, x, y, size = 12, color = '#ffffff', align = 'left', outlineColor = '#0b0d14') {
+        ctx.font = `${size}px "Press Start 2P", monospace`;
+        ctx.textAlign = align;
+        ctx.textBaseline = 'top';
+        const rx = Math.round(x);
+        const ry = Math.round(y);
+
+        ctx.fillStyle = outlineColor;
+        ctx.fillText(text, rx - 2, ry);
+        ctx.fillText(text, rx + 2, ry);
+        ctx.fillText(text, rx, ry - 2);
+        ctx.fillText(text, rx, ry + 2);
+        ctx.fillText(text, rx + 2, ry + 2);
+
+        ctx.fillStyle = color;
+        ctx.fillText(text, rx, ry);
+    }
+
+    // ----------------------------------------------------------------------------
+    // 3. CUSTOM 16-BIT CHARACTER & ENEMY SPRITE RENDERERS
+    // ----------------------------------------------------------------------------
+
+    /**
+     * Draw Linus (Guile-inspired young hero from reference image):
+     * - Spiky golden-blonde flat-top hair
+     * - Green sleeveless tank top + silver dog tags
+     * - Black fingerless gloves
+     * - Olive-tan cargo pants with side pockets
+     * - Black combat boots
+     */
+    function drawLinusSprite(x, y, facing, state, animTimer, invuln = false) {
+        if (invuln && Math.floor(animTimer * 20) % 2 === 0) return;
+
+        ctx.save();
+        ctx.translate(Math.round(x), Math.round(y));
+        if (facing < 0) ctx.scale(-1, 1);
+
+        // Ground shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.42)';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 22, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        const walkBob = (state === 'walk') ? Math.sin(animTimer * 16) * 2 : 0;
+        const idleBob = (state === 'idle') ? Math.sin(animTimer * 5) * 1 : 0;
+        const bob = walkBob + idleBob;
+
+        // Flash Kick somersault rotation
+        if (state === 'sp2') {
+            ctx.translate(0, -32);
+            ctx.rotate(-animTimer * 18);
+            ctx.translate(0, 32);
+        }
+
+        // --- LEGS & CARGO PANTS ---
+        const stride = (state === 'walk') ? Math.sin(animTimer * 16) * 7 : 0;
+        const kickOut = (state === 'sp2') ? 14 : 0;
+
+        // Back Leg (Olive Cargo)
+        pxRect(-13 - stride, -26 + bob * 0.3, 12, 19, '#6b5e28', '#14110b');
+        pxRect(-14 - stride, -18 + bob * 0.3, 6, 7, '#574b1e', '#14110b'); // Cargo pocket
+        // Back Boot
+        pxRect(-15 - stride, -8, 15, 8, '#1e2229', '#090a0d');
+        pxRect(-13 - stride, -6, 11, 2, '#475569');
+
+        // Front Leg (Olive Cargo)
+        pxRect(2 + stride + kickOut * 0.4, -26 - kickOut + bob * 0.3, 12, 19, '#857534', '#14110b');
+        pxRect(6 + stride + kickOut * 0.4, -18 - kickOut + bob * 0.3, 6, 7, '#6b5e28', '#14110b'); // Cargo pocket
+        // Front Boot
+        pxRect(2 + stride + kickOut * 0.6, -8 - kickOut * 1.2, 16, 8, '#282d37', '#090a0d');
+        pxRect(5 + stride + kickOut * 0.6, -6 - kickOut * 1.2, 11, 2, '#64748b');
+
+        // Belt
+        pxRect(-12, -28 + bob, 24, 4, '#292524', '#090a0d');
+        pxRect(-2, -28 + bob, 5, 4, '#cbd5e1'); // Silver belt buckle
+
+        // --- TORSO (Green Tank Top + Dog Tags) ---
+        pxRect(-12, -49 + bob, 24, 21, '#237a32', '#0d1f11');
+        // Shading on tank top
+        pxRect(-12, -49 + bob, 6, 21, '#185923');
+        pxRect(4, -47 + bob, 6, 16, '#349e46');
+        // Neck & Chest Skin
+        pxRect(-6, -51 + bob, 12, 6, '#f2a66d');
+        // Silver Dog Tags
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(-2, -47 + bob, 1, 7);
+        ctx.fillRect(2, -47 + bob, 1, 6);
+        pxRect(-3, -41 + bob, 4, 5, '#e2e8f0', '#1e293b');
+
+        // --- BACK ARM ---
+        const punchExtend = (state === 'attack' || state === 'sp1') ? 16 : 0;
+        pxRect(-17, -47 + bob, 8, 12, '#e08d52', '#1a110b');
+        pxRect(-18, -37 + bob, 9, 8, '#1e2229', '#090a0d'); // Black fingerless glove
+
+        // --- HEAD & SPIKY BLONDE FLAT-TOP HAIR ---
+        const headX = (state === 'attack' || state === 'sp1') ? 3 : 0;
+        // Face
+        pxRect(-9 + headX, -67 + bob, 19, 17, '#f5b076', '#1a110b');
+        // Jawline shade
+        pxRect(-9 + headX, -54 + bob, 18, 4, '#d9874e');
+        // Determined Eyebrow & Eye
+        pxRect(2 + headX, -62 + bob, 7, 2, '#422006');
+        pxRect(4 + headX, -60 + bob, 4, 3, '#ffffff');
+        pxRect(6 + headX, -60 + bob, 2, 3, '#0f172a');
+        // Grinning / shouting mouth
+        if (state === 'attack' || state === 'sp1' || state === 'sp2') {
+            pxRect(3 + headX, -55 + bob, 6, 3, '#ffffff', '#450a0a');
+        } else {
+            pxRect(4 + headX, -54 + bob, 5, 2, '#7c2d12');
+        }
+
+        // Iconic Golden Blonde Flat-Top Spiky Hair
+        pxRect(-12 + headX, -75 + bob, 26, 9, '#facc15', '#1a110b');
+        pxRect(-14 + headX, -78 + bob, 29, 5, '#fde047', '#1a110b');
+        // Hair spikes along top
+        for (let sx = -13; sx <= 12; sx += 5) {
+            pxRect(sx + headX, -81 + bob, 4, 4, '#fef08a', '#1a110b');
+        }
+        // Hair sideburns / temple fade
+        pxRect(-11 + headX, -68 + bob, 5, 8, '#eab308', '#1a110b');
+
+        // --- FRONT ARM (Punching / Sonic Boom Pose) ---
+        if (state === 'attack' || state === 'sp1') {
+            // Extended muscular arm
+            pxRect(6, -46 + bob, 16 + punchExtend * 0.4, 9, '#f5b076', '#1a110b');
+            // Black fingerless glove
+            pxRect(18 + punchExtend * 0.5, -47 + bob, 11, 10, '#1e2229', '#090a0d');
+            pxRect(24 + punchExtend * 0.5, -45 + bob, 4, 5, '#f5b076'); // Finger tips
+        } else {
+            // Guard stance arm
+            pxRect(8, -46 + bob, 9, 12, '#f5b076', '#1a110b');
+            pxRect(10, -37 + bob, 10, 9, '#1e2229', '#090a0d');
+            pxRect(16, -35 + bob, 3, 4, '#f5b076');
+        }
+
+        // Flash Kick Crescent Arc Effect
+        if (state === 'sp2') {
+            ctx.strokeStyle = '#fef08a';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.arc(0, -30, 38, -Math.PI * 0.7, Math.PI * 0.4);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, -30, 44, -Math.PI * 0.65, Math.PI * 0.35);
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+
+    /**
+     * Draw Ava (Chun-Li-inspired young hero from reference image):
+     * - Dark brown hair with white ox-horn hair buns & ribbons + long flowing hair
+     * - Blue qipao martial arts tunic with gold trim
+     * - Spiked black wristbands
+     * - Dark shorts & white martial arts boots
+     */
+    function drawAvaSprite(x, y, facing, state, animTimer, invuln = false) {
+        if (invuln && Math.floor(animTimer * 20) % 2 === 0) return;
+
+        ctx.save();
+        ctx.translate(Math.round(x), Math.round(y));
+        if (facing < 0) ctx.scale(-1, 1);
+
+        // Ground shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.42)';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 21, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        const walkBob = (state === 'walk') ? Math.sin(animTimer * 17) * 2 : 0;
+        const idleBob = (state === 'idle') ? Math.sin(animTimer * 5.5) * 1.2 : 0;
+        const bob = walkBob + idleBob;
+
+        if (state === 'sp2') {
+            // Spinning Bird Kick inverted spin
+            ctx.translate(0, -30);
+            ctx.scale(Math.cos(animTimer * 24), 1);
+            ctx.translate(0, 30);
+        }
+
+        // --- FLOWING LONG BACK HAIR ---
+        const hairWave = Math.sin(animTimer * 10) * 3;
+        pxRect(-18 - hairWave * 0.5, -58 + bob, 11, 34, '#2b1810', '#120906');
+        pxRect(-16 - hairWave * 0.5, -54 + bob, 6, 28, '#45271a');
+
+        // --- LEGS & WHITE MARTIAL ARTS BOOTS ---
+        const stride = (state === 'walk') ? Math.sin(animTimer * 17) * 7 : 0;
+
+        // Back Leg
+        pxRect(-11 - stride, -23 + bob * 0.3, 9, 13, '#f5b076', '#1a110b');
+        pxRect(-12 - stride, -12, 12, 12, '#f8fafc', '#1e293b'); // White boot
+        pxRect(-12 - stride, -12, 12, 2, '#cbd5e1');
+
+        // Front Leg (High Kick on Attack / Lightning Legs)
+        if (state === 'attack' || state === 'sp1') {
+            // High sweeping kick
+            pxRect(4, -34 + bob, 16, 9, '#f5b076', '#1a110b');
+            pxRect(18, -37 + bob, 14, 11, '#f8fafc', '#1e293b'); // White boot kick
+            // Lightning Legs multi-kick afterimages
+            if (state === 'sp1') {
+                const flick = Math.floor(animTimer * 35) % 3;
+                ctx.globalAlpha = 0.7;
+                pxRect(16, -48 + flick * 6, 18, 8, '#38bdf8', '#0284c7');
+                pxRect(18, -24 - flick * 5, 18, 8, '#bae6fd', '#0284c7');
+                ctx.globalAlpha = 1.0;
+            }
+        } else {
+            pxRect(2 + stride, -23 + bob * 0.3, 9, 13, '#f5b076', '#1a110b');
+            pxRect(2 + stride, -12, 13, 12, '#f8fafc', '#1e293b'); // White boot
+            pxRect(4 + stride, -10, 9, 2, '#94a3b8');
+        }
+
+        // Dark Shorts
+        pxRect(-10, -28 + bob, 20, 8, '#1e293b', '#090a0d');
+
+        // --- BLUE QIPAO TUNIC WITH GOLD TRIM ---
+        pxRect(-11, -47 + bob, 22, 20, '#1d4ed8', '#0f172a');
+        // Flowing front skirt flap
+        pxRect(-4, -29 + bob, 13, 13, '#2563eb', '#0f172a');
+        pxRect(-3, -28 + bob, 11, 11, '#1d4ed8');
+        // Gold Trim & Collar
+        pxRect(-4, -47 + bob, 9, 2, '#facc15');
+        pxRect(1, -45 + bob, 2, 14, '#facc15');
+        pxRect(-3, -18 + bob, 11, 2, '#facc15');
+        // Puffy white/blue shoulder trim
+        pxRect(-13, -47 + bob, 5, 6, '#eff6ff', '#1e3a8a');
+        pxRect(8, -47 + bob, 5, 6, '#eff6ff', '#1e3a8a');
+
+        // --- BACK ARM & SPIKED WRISTBAND ---
+        pxRect(-16, -42 + bob, 6, 10, '#f5b076', '#1a110b');
+        pxRect(-17, -36 + bob, 7, 5, '#1e293b', '#090a0d'); // Wristband
+        pxRect(-19, -35 + bob, 2, 2, '#f8fafc'); // Spike
+
+        // --- HEAD & OX-HORN BUNS WITH WHITE RIBBONS ---
+        pxRect(-8, -65 + bob, 17, 17, '#f5b076', '#1a110b');
+        // Dark brown hair & bangs
+        pxRect(-9, -68 + bob, 19, 7, '#3b2014', '#120906');
+        pxRect(-8, -62 + bob, 4, 6, '#3b2014');
+        pxRect(5, -62 + bob, 4, 5, '#3b2014');
+
+        // Cute expressive anime/SNES eyes
+        pxRect(2, -59 + bob, 4, 4, '#ffffff');
+        pxRect(4, -59 + bob, 2, 4, '#1e1b4b');
+        pxRect(2, -61 + bob, 5, 1, '#2b1810'); // Eyebrow
+        // Cheerful determined smile
+        pxRect(3, -53 + bob, 4, 2, '#be123c');
+
+        // Left & Right White Ox-Horn Buns + Flowing Ribbons
+        pxRect(-13, -70 + bob, 7, 7, '#f8fafc', '#1e293b');
+        pxRect(6, -70 + bob, 7, 7, '#f8fafc', '#1e293b');
+        // White ribbons trailing from buns
+        pxRect(-16, -65 + bob, 4, 8, '#e2e8f0', '#334155');
+        pxRect(11, -65 + bob, 4, 8, '#e2e8f0', '#334155');
+
+        // --- FRONT ARM & SPIKED WRISTBAND ---
+        const armThrust = (state === 'sp1') ? 10 : 0;
+        pxRect(9, -43 + bob, 8 + armThrust, 7, '#f5b076', '#1a110b');
+        pxRect(13 + armThrust, -44 + bob, 6, 7, '#1e293b', '#090a0d');
+        // Silver spikes on wristband
+        pxRect(15 + armThrust, -46 + bob, 2, 2, '#ffffff');
+        pxRect(15 + armThrust, -37 + bob, 2, 2, '#ffffff');
+
+        // Spinning Bird Kick whirlwind aura
+        if (state === 'sp2') {
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.ellipse(0, -28, 34, 10, 0, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+
+    /**
+     * Draw Chunky 16-bit Dinosaurs & Mosasaurs matching the SNK/Capcom pixel style
+     */
+    function drawEnemySprite(enemy) {
+        ctx.save();
+        ctx.translate(Math.round(enemy.x), Math.round(enemy.y));
+        if (enemy.facing < 0) ctx.scale(-1, 1);
+
+        // Hit flash tint
+        const isHurt = enemy.hurtTimer > 0;
+        const t = enemy.animTimer;
+
+        // Ground shadow (if not underwater)
+        if (!enemy.submerged) {
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, enemy.w * 0.45, 6, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        if (enemy.type === 'raptor') {
+            // --- VELOCIRAPTOR (Fast Emerald/Lime Pack Hunter with Tiger Stripes) ---
+            const bob = Math.sin(t * 16) * 2.5;
+            const mainCol = isHurt ? '#ffffff' : '#16a34a';
+            const darkCol = isHurt ? '#e2e8f0' : '#14532d';
+            const bellyCol = isHurt ? '#f8fafc' : '#bef264';
+
+            // Long Tail
+            pxRect(-34, -26 + bob, 20, 7, mainCol, '#052e16');
+            pxRect(-44, -28 + bob, 12, 4, darkCol, '#052e16');
+            // Legs
+            const legSwing = Math.sin(t * 16) * 6;
+            pxRect(-8 - legSwing, -16, 7, 16, darkCol, '#052e16');
+            pxRect(2 + legSwing, -16, 7, 16, mainCol, '#052e16');
+            // Curved Raptor Claws
+            pxRect(7 + legSwing, -4, 5, 4, '#fef08a', '#052e16');
+            // Torso
+            pxRect(-14, -30 + bob, 24, 16, mainCol, '#052e16');
+            pxRect(-10, -20 + bob, 18, 6, bellyCol);
+            // Tiger Stripes
+            pxRect(-8, -30 + bob, 3, 6, '#052e16');
+            pxRect(-1, -30 + bob, 3, 7, '#052e16');
+            // Arms with claws
+            pxRect(8, -23 + bob, 9, 4, mainCol, '#052e16');
+            pxRect(15, -21 + bob, 3, 4, '#fef08a');
+            // Snout & Jaw
+            pxRect(6, -42 + bob, 22, 13, mainCol, '#052e16');
+            pxRect(10, -33 + bob, 17, 5, bellyCol, '#052e16');
+            // Sharp teeth
+            pxRect(13, -35 + bob, 2, 3, '#ffffff');
+            pxRect(18, -35 + bob, 2, 3, '#ffffff');
+            pxRect(23, -35 + bob, 2, 3, '#ffffff');
+            // Fierce yellow/red eye
+            pxRect(11, -40 + bob, 4, 4, '#facc15', '#052e16');
+            pxRect(13, -39 + bob, 2, 2, '#dc2626');
+
+        } else if (enemy.type === 'triceratops') {
+            // --- TRICERATOPS (Heavy Armored Charger) ---
+            const bob = Math.sin(t * 10) * 1.5;
+            const mainCol = isHurt ? '#ffffff' : '#ea580c';
+            const darkCol = isHurt ? '#e2e8f0' : '#9a3412';
+            const hornCol = '#fef9c3';
+
+            // Tail & Thick Legs
+            pxRect(-42, -26 + bob, 14, 10, darkCol, '#270e04');
+            const step = Math.sin(t * 10) * 4;
+            pxRect(-26 - step, -18, 11, 18, darkCol, '#270e04');
+            pxRect(8 + step, -18, 11, 18, mainCol, '#270e04');
+            // Heavy Body
+            pxRect(-30, -42 + bob, 46, 26, mainCol, '#270e04');
+            pxRect(-26, -42 + bob, 38, 7, '#fb923c'); // Ridge highlight
+            // Armored Frill Crest
+            pxRect(10, -52 + bob, 12, 30, darkCol, '#270e04');
+            pxRect(12, -50 + bob, 3, 3, '#facc15');
+            pxRect(12, -40 + bob, 3, 3, '#facc15');
+            pxRect(12, -30 + bob, 3, 3, '#facc15');
+            // Head & Beak
+            pxRect(18, -40 + bob, 20, 20, mainCol, '#270e04');
+            // Three Ivory Horns
+            pxRect(34, -42 + bob, 16, 5, hornCol, '#270e04'); // Brow horn
+            pxRect(34, -34 + bob, 14, 4, hornCol, '#270e04'); // Brow horn 2
+            pxRect(36, -26 + bob, 9, 5, hornCol, '#270e04');  // Nose horn
+            // Eye
+            pxRect(23, -36 + bob, 4, 4, '#ffffff');
+            pxRect(25, -35 + bob, 2, 2, '#090a0d');
+
+        } else if (enemy.type === 'pteranodon') {
+            // --- PTERANODON (Swooping Aerial Striker) ---
+            const flap = Math.sin(t * 18) * 16;
+            const mainCol = isHurt ? '#ffffff' : '#9333ea';
+            const wingCol = isHurt ? '#e2e8f0' : '#c084fc';
+
+            // Back Wing
+            pxRect(-12, -38 - flap * 0.7, 24, 10, '#6b21a8', '#1e0636');
+            // Body
+            pxRect(-14, -32, 24, 12, mainCol, '#1e0636');
+            // Head Crest & Long Beak
+            pxRect(-22, -40, 18, 8, mainCol, '#1e0636'); // Back crest
+            pxRect(8, -34, 24, 7, '#f59e0b', '#1e0636');  // Sharp orange beak
+            pxRect(9, -33, 4, 4, '#ffffff');             // Eye
+            pxRect(11, -32, 2, 2, '#000000');
+            // Front Wing
+            pxRect(-10, -28 + flap * 0.8, 26, 11, wingCol, '#1e0636');
+
+        } else if (enemy.type === 'mosasaur') {
+            // --- MOSASAURUS (Massive Marine Predator & Stage Boss) ---
+            const isBoss = enemy.isBoss;
+            const scale = isBoss ? 1.35 : 0.95;
+            ctx.scale(scale, scale);
+
+            const wave = Math.sin(t * 9) * 3;
+            const mainCol = isHurt ? '#ffffff' : '#0284c7';
+            const darkCol = isHurt ? '#e2e8f0' : '#0c4a6e';
+            const bellyCol = isHurt ? '#f8fafc' : '#bae6fd';
+
+            // Muscular Marine Tail & Fluke
+            pxRect(-66, -34 + wave, 28, 16, darkCol, '#041e30');
+            pxRect(-84, -44 + wave * 1.4, 20, 32, mainCol, '#041e30');
+
+            // Massive Torso & Dorsal Spines
+            pxRect(-42, -48 + wave * 0.5, 58, 34, mainCol, '#041e30');
+            pxRect(-38, -22 + wave * 0.5, 52, 10, bellyCol);
+            for (let sx = -36; sx <= 10; sx += 10) {
+                pxRect(sx, -54 + wave * 0.5, 6, 6, '#38bdf8', '#041e30');
+            }
+
+            // Giant Flippers
+            pxRect(-18, -18 + wave, 18, 16, darkCol, '#041e30');
+            pxRect(6, -16 + wave, 16, 14, mainCol, '#041e30');
+
+            // Enormous Crocodilian Jaws
+            const jawOpen = Math.abs(Math.sin(t * 6)) * 10;
+            // Upper Skull
+            pxRect(12, -48 + wave * 0.4, 38, 18, mainCol, '#041e30');
+            // Lower Jaw
+            pxRect(14, -28 + jawOpen + wave * 0.4, 34, 11, bellyCol, '#041e30');
+            // Rows of Razor Teeth
+            for (let tx = 18; tx <= 44; tx += 6) {
+                pxRect(tx, -30 + wave * 0.4, 3, 5, '#ffffff');
+                pxRect(tx + 2, -32 + jawOpen + wave * 0.4, 3, 5, '#ffffff');
+            }
+            // Glowing Predator Eye
+            pxRect(20, -44 + wave * 0.4, 6, 5, '#facc15', '#041e30');
+            pxRect(23, -43 + wave * 0.4, 2, 3, '#dc2626');
+
+        } else if (enemy.type === 'trex') {
+            // --- T-REX FINAL BOSS (Towering Tyrant Lizard King) ---
+            const bob = Math.sin(t * 8) * 3;
+            const mainCol = isHurt ? '#ffffff' : '#b91c1c';
+            const darkCol = isHurt ? '#e2e8f0' : '#7f1d1d';
+            const bellyCol = isHurt ? '#f8fafc' : '#fca5a5';
+
+            // Massive Tail
+            pxRect(-76, -54 + bob, 40, 18, darkCol, '#1f0505');
+            pxRect(-104, -58 + bob * 1.3, 30, 11, mainCol, '#1f0505');
+
+            // Thick Muscular Legs
+            const step = Math.sin(t * 8) * 7;
+            pxRect(-26 - step, -34, 18, 34, darkCol, '#1f0505');
+            pxRect(2 + step, -34, 18, 34, mainCol, '#1f0505');
+            // Clawed Feet
+            pxRect(6 + step, -7, 22, 7, '#fef08a', '#1f0505');
+
+            // Towering Torso
+            pxRect(-40, -76 + bob, 56, 46, mainCol, '#1f0505');
+            pxRect(-16, -70 + bob, 30, 38, bellyCol);
+            // Tiny T-Rex Arms
+            pxRect(16, -60 + bob, 14, 6, mainCol, '#1f0505');
+            pxRect(28, -56 + bob, 4, 5, '#fef08a');
+
+            // Colossal Head & Roaring Jaws
+            const roarOpen = Math.abs(Math.sin(t * 5)) * 12;
+            pxRect(-6, -106 + bob, 48, 26, mainCol, '#1f0505');
+            pxRect(0, -78 + roarOpen + bob, 40, 12, darkCol, '#1f0505');
+            // Giant Fangs
+            for (let tx = 4; tx <= 34; tx += 7) {
+                pxRect(tx, -80 + bob, 4, 7, '#ffffff');
+                pxRect(tx + 2, -83 + roarOpen + bob, 4, 6, '#ffffff');
+            }
+            // Fierce Eye & Brow Horn
+            pxRect(8, -108 + bob, 10, 4, '#f59e0b', '#1f0505');
+            pxRect(10, -101 + bob, 6, 6, '#facc15', '#1f0505');
+            pxRect(13, -100 + bob, 3, 4, '#000000');
+        }
+
+        ctx.restore();
+    }
+
+    // ----------------------------------------------------------------------------
+    // 4. PARALLAX 16-BIT STAGE BACKGROUNDS (SF2 Airbase, Jungle Coast, Lagoon)
+    // ----------------------------------------------------------------------------
+    function drawStageBackground(stageIdx, cameraX, time) {
+        if (stageIdx === 0) {
+            // === STAGE 1: AIRBASE DOCKS (Directly inspired by reference image!) ===
+            // Sky gradient
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, 230);
+            skyGrad.addColorStop(0, '#1d4ed8');
+            skyGrad.addColorStop(0.6, '#38bdf8');
+            skyGrad.addColorStop(1, '#bae6fd');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, W, 230);
+
+            // Pixel-stepped clouds
+            ctx.fillStyle = '#ffffff';
+            for (let i = 0; i < 6; i++) {
+                const cx = ((i * 190 - cameraX * 0.12) % (W + 160) + (W + 160)) % (W + 160) - 80;
+                const cy = 32 + (i % 3) * 24;
+                pxRect(cx, cy, 70, 12, '#ffffff');
+                pxRect(cx + 12, cy - 8, 44, 10, '#ffffff');
+                pxRect(cx + 6, cy + 10, 58, 4, '#cbd5e1');
+            }
+
+            // Distant Coastal Mountains & Ocean
+            ctx.fillStyle = '#0284c7';
+            ctx.fillRect(0, 175, W, 45);
+            for (let m = 0; m < 5; m++) {
+                const mx = ((m * 240 - cameraX * 0.22) % (W + 240) + (W + 240)) % (W + 240) - 120;
+                ctx.fillStyle = '#334155';
+                ctx.beginPath();
+                ctx.moveTo(mx, 185);
+                ctx.lineTo(mx + 65, 118);
+                ctx.lineTo(mx + 140, 185);
+                ctx.fill();
+                ctx.fillStyle = '#facc15';
+                ctx.beginPath();
+                ctx.moveTo(mx + 65, 118);
+                ctx.lineTo(mx + 95, 185);
+                ctx.lineTo(mx + 140, 185);
+                ctx.fill();
+            }
+
+            // Parked F-16 Fighter Jet & Hangar Buildings (Midground)
+            for (let j = 0; j < 3; j++) {
+                const jx = ((j * 520 - cameraX * 0.5) % 1560 + 1560) % 1560 - 220;
+                // Hangar structure
+                pxRect(jx - 60, 145, 140, 75, '#475569', '#0f172a');
+                pxRect(jx - 50, 155, 120, 16, '#334155');
+                // Fighter Jet Fuselage
+                pxRect(jx + 110, 162, 140, 26, '#94a3b8', '#0f172a');
+                pxRect(jx + 90, 170, 25, 12, '#475569', '#0f172a'); // Nose cone
+                pxRect(jx + 135, 150, 48, 13, '#38bdf8', '#0f172a'); // Cockpit canopy
+                pxRect(jx + 215, 132, 24, 32, '#64748b', '#0f172a'); // Tail fin
+                pxRect(jx + 155, 188, 12, 28, '#1e293b'); // Landing gear
+                pxRect(jx + 215, 188, 12, 28, '#1e293b');
+            }
+
+            // Chain-link Fence & Fuel Barrels
+            for (let f = 0; f < 8; f++) {
+                const fx = ((f * 180 - cameraX * 0.75) % 1440 + 1440) % 1440 - 90;
+                pxRect(fx, 130, 6, 90, '#64748b', '#0f172a');
+                // Orange/Blue Oil Drums
+                pxRect(fx + 14, 184, 22, 36, '#ea580c', '#0f172a');
+                pxRect(fx + 14, 195, 22, 4, '#1e293b');
+                pxRect(fx + 38, 188, 22, 32, '#2563eb', '#0f172a');
+            }
+
+            // Concrete Airbase Tarmac Floor
+            pxRect(0, 220, W, 140, '#94a3b8', '#0f172a');
+            pxRect(0, 220, W, 10, '#cbd5e1');
+            // Tarmac Grid Lines
+            ctx.fillStyle = '#475569';
+            for (let gx = -1; gx < 10; gx++) {
+                const lx = gx * 90 - (cameraX % 90);
+                ctx.fillRect(lx, 220, 3, 140);
+            }
+            ctx.fillRect(0, 265, W, 3);
+            ctx.fillRect(0, 312, W, 4);
+
+        } else if (stageIdx === 1) {
+            // === STAGE 2: PREHISTORIC JUNGLE COASTLINE ===
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, 220);
+            skyGrad.addColorStop(0, '#065f46');
+            skyGrad.addColorStop(0.5, '#10b981');
+            skyGrad.addColorStop(1, '#fef08a');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, W, 225);
+
+            // Active Volcano in background
+            const vx = 420 - (cameraX * 0.08) % 300;
+            ctx.fillStyle = '#3f3f46';
+            ctx.beginPath();
+            ctx.moveTo(vx - 110, 210);
+            ctx.lineTo(vx - 20, 85);
+            ctx.lineTo(vx + 20, 85);
+            ctx.lineTo(vx + 110, 210);
+            ctx.fill();
+            pxRect(vx - 18, 83, 36, 8, '#f97316'); // Lava crater
+
+            // Lush Jungle Canopy Trees
+            for (let tIdx = 0; tIdx < 10; tIdx++) {
+                const tx = ((tIdx * 140 - cameraX * 0.45) % 1400 + 1400) % 1400 - 70;
+                pxRect(tx + 18, 120, 16, 100, '#78350f', '#1c0a00');
+                pxRect(tx - 12, 95, 76, 36, '#15803d', '#052e16');
+                pxRect(tx - 2, 82, 56, 22, '#22c55e', '#052e16');
+            }
+
+            // Sandy Jungle Path + Surf Water Strip
+            pxRect(0, 220, W, 92, '#d97706', '#451a03');
+            pxRect(0, 220, W, 14, '#fbbf24');
+            // Shimmering Ocean Surf at bottom edge (where Mosasaurs leap!)
+            const waveShift = Math.sin(time * 4) * 6;
+            pxRect(0, 312, W, 48, '#0284c7', '#082f49');
+            pxRect(0, 312, W, 6 + waveShift * 0.4, '#e0f2fe');
+
+        } else {
+            // === STAGE 3: SUNKEN LAGOON & VOLCANIC ARENA ===
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, 225);
+            skyGrad.addColorStop(0, '#311042');
+            skyGrad.addColorStop(0.55, '#be123c');
+            skyGrad.addColorStop(1, '#f97316');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, W, 225);
+
+            // Setting Giant Sun
+            ctx.fillStyle = '#fde047';
+            ctx.beginPath();
+            ctx.arc(320, 145, 58, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Ancient Stone Ruins & Totems
+            for (let r = 0; r < 7; r++) {
+                const rx = ((r * 210 - cameraX * 0.4) % 1470 + 1470) % 1470 - 80;
+                pxRect(rx, 130, 28, 90, '#44403c', '#1c1917');
+                pxRect(rx - 6, 124, 40, 10, '#57534e', '#1c1917');
+                pxRect(rx + 6, 145, 6, 6, '#f97316');
+                pxRect(rx + 16, 145, 6, 6, '#f97316');
+            }
+
+            // Ancient Stone Causeway surrounded by Deep Lagoon Water
+            pxRect(0, 220, W, 88, '#57534e', '#1c1917');
+            pxRect(0, 220, W, 10, '#78716c');
+            for (let sx = -1; sx < 10; sx++) {
+                const lx = sx * 80 - (cameraX % 80);
+                pxRect(lx, 222, 2, 84, '#292524');
+            }
+            // Deep Lagoon Foreground Waves
+            pxRect(0, 308, W, 52, '#0369a1', '#082f49');
+            for (let wx = 0; wx < W; wx += 48) {
+                const wy = 312 + Math.sin(time * 5 + wx * 0.05) * 3;
+                pxRect(wx, wy, 32, 4, '#7dd3fc');
+            }
+        }
+    }
+
+    // ----------------------------------------------------------------------------
+    // 5. GAME STATE & CORE ENTITIES
+    // ----------------------------------------------------------------------------
+    const STAGES = [
+        {
+            name: 'STAGE 1: AIRBASE DOCKS',
+            length: 2100,
+            bossType: 'triceratops',
+            bossName: 'ARMORED TRICERATOPS',
+            waves: [
+                { triggerX: 280, enemies: [{ type: 'raptor', offset: 360 }, { type: 'raptor', offset: 430 }] },
+                { triggerX: 720, enemies: [{ type: 'raptor', offset: 350 }, { type: 'pteranodon', offset: 410 }, { type: 'raptor', offset: 470 }] },
+                { triggerX: 1220, enemies: [{ type: 'triceratops', offset: 380 }, { type: 'raptor', offset: 450 }] },
+                { triggerX: 1750, boss: true }
+            ]
+        },
+        {
+            name: 'STAGE 2: JURASSIC COAST',
+            length: 2300,
+            bossType: 'mosasaur',
+            bossName: 'LEVIATHAN MOSASAUR',
+            waves: [
+                { triggerX: 300, enemies: [{ type: 'raptor', offset: 340 }, { type: 'pteranodon', offset: 400 }] },
+                { triggerX: 800, enemies: [{ type: 'mosasaur', offset: 360, isBoss: false }, { type: 'raptor', offset: 430 }] },
+                { triggerX: 1350, enemies: [{ type: 'triceratops', offset: 360 }, { type: 'pteranodon', offset: 420 }, { type: 'raptor', offset: 480 }] },
+                { triggerX: 1920, boss: true }
+            ]
+        },
+        {
+            name: 'STAGE 3: LAGOON CITADEL',
+            length: 2400,
+            bossType: 'trex',
+            bossName: 'TYRANNOSAURUS REX',
+            waves: [
+                { triggerX: 320, enemies: [{ type: 'raptor', offset: 340 }, { type: 'raptor', offset: 400 }, { type: 'pteranodon', offset: 450 }] },
+                { triggerX: 880, enemies: [{ type: 'mosasaur', offset: 360, isBoss: false }, { type: 'triceratops', offset: 440 }] },
+                { triggerX: 1450, enemies: [{ type: 'raptor', offset: 340 }, { type: 'pteranodon', offset: 390 }, { type: 'mosasaur', offset: 460, isBoss: false }] },
+                { triggerX: 2020, boss: true }
+            ]
+        }
+    ];
+
+    const game = {
+        screen: 'select', // 'select', 'playing', 'stageClear', 'victory', 'gameover'
+        selectedHero: 'linus', // 'linus' or 'ava'
+        score: 0,
+        stageIdx: 0,
+        cameraX: 0,
+        waveIdx: 0,
+        waveLocked: false,
+        screenShake: 0,
+        bannerTimer: 0,
+        bannerText: '',
+        globalTime: 0,
+        player: null,
+        enemies: [],
+        projectiles: [],
+        particles: [],
+        floatingTexts: [],
+        boss: null
+    };
+
+    // Input Tracking
+    const keys = {};
+    const justPressed = {};
+
+    function setKey(code, isDown) {
+        if (isDown && !keys[code]) {
+            justPressed[code] = true;
+        }
+        keys[code] = isDown;
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+            e.preventDefault();
+        }
+        setKey(e.code, true);
+    });
+
+    window.addEventListener('keyup', (e) => {
+        setKey(e.code, false);
+    });
+
+    // Touch & Mouse Arcade Deck Wiring
+    const padButtons = document.querySelectorAll('[data-key]');
+    padButtons.forEach((btn) => {
+        const keyCode = btn.getAttribute('data-key');
+        const press = (e) => {
+            e.preventDefault();
+            sfx.init();
+            btn.classList.add('pressed');
+            setKey(keyCode, true);
+        };
+        const release = (e) => {
+            e.preventDefault();
+            btn.classList.remove('pressed');
+            setKey(keyCode, false);
+        };
+        btn.addEventListener('pointerdown', press);
+        btn.addEventListener('pointerup', release);
+        btn.addEventListener('pointerleave', release);
+        btn.addEventListener('pointercancel', release);
+    });
+
+    // Canvas direct click/tap support for Character Select & Restart
+    canvas.addEventListener('pointerdown', (e) => {
+        sfx.init();
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = W / rect.width;
+        const scaleY = H / rect.height;
+        const cx = (e.clientX - rect.left) * scaleX;
+        const cy = (e.clientY - rect.top) * scaleY;
+
+        if (game.screen === 'select') {
+            // Left card = Linus (x < 320), Right card = Ava (x >= 320)
+            if (cx < W / 2) {
+                if (game.selectedHero === 'linus' && cy > 250) {
+                    startGame();
+                } else {
+                    game.selectedHero = 'linus';
+                    sfx.selectBlip();
+                    // Start immediately if tapping the "START" button or double-tapping
+                    if (cy >= 265) startGame();
+                }
+            } else {
+                if (game.selectedHero === 'ava' && cy > 250) {
+                    startGame();
+                } else {
+                    game.selectedHero = 'ava';
+                    sfx.selectBlip();
+                    if (cy >= 265) startGame();
+                }
+            }
+        } else if (game.screen === 'victory' || game.screen === 'gameover') {
+            if (cx < W / 2) {
+                // Play Again with current hero
+                startGame();
+            } else {
+                // Return to Character Select
+                openHeroSelect();
+            }
+        }
+    });
+
+    // Top Bar Buttons
+    document.getElementById('btn-mute').addEventListener('click', () => {
+        const muted = sfx.toggleMute();
+        document.getElementById('btn-mute').textContent = muted ? 'SFX: OFF' : 'SFX: ON';
+    });
+
+    const switchHeroBtn = document.getElementById('btn-switch-hero');
+    switchHeroBtn.addEventListener('click', () => {
+        openHeroSelect();
+    });
+
+    function openHeroSelect() {
+        sfx.selectBlip();
+        game.screen = 'select';
+        switchHeroBtn.classList.add('hidden');
+    }
+
+    // ----------------------------------------------------------------------------
+    // 6. GAMEPLAY INITIALIZATION & SPAWNING
+    // ----------------------------------------------------------------------------
+    function startGame() {
+        sfx.confirmHero();
+        game.score = 0;
+        game.stageIdx = 0;
+        game.screen = 'playing';
+        switchHeroBtn.classList.remove('hidden');
+
+        game.player = {
+            hero: game.selectedHero,
+            x: 110,
+            y: GROUND_Y,
+            z: 0, // Depth offset (0 = center lane, -45 to +20)
+            vx: 0,
+            vy: 0,
+            facing: 1,
+            hp: 100,
+            maxHp: 100,
+            sp: 100,
+            maxSp: 100,
+            state: 'idle', // 'idle', 'walk', 'jump', 'attack', 'sp1', 'sp2', 'hurt'
+            stateTimer: 0,
+            animTimer: 0,
+            invulnTimer: 0,
+            comboCount: 0,
+            comboResetTimer: 0
+        };
+
+        loadStage(0);
+    }
+
+    function loadStage(idx) {
+        game.stageIdx = idx;
+        game.cameraX = 0;
+        game.waveIdx = 0;
+        game.waveLocked = false;
+        game.enemies = [];
+        game.projectiles = [];
+        game.particles = [];
+        game.floatingTexts = [];
+        game.boss = null;
+
+        game.player.x = 100;
+        game.player.y = GROUND_Y;
+        game.player.z = 0;
+        game.player.vx = 0;
+        game.player.vy = 0;
+        game.player.state = 'idle';
+        // Restore 35 HP between stages
+        game.player.hp = Math.min(game.player.maxHp, game.player.hp + 35);
+
+        game.bannerText = STAGES[idx].name;
+        game.bannerTimer = 2.4;
+    }
+
+    function spawnEnemy(type, worldX, isBoss = false) {
+        const zOffset = (Math.random() * 50) - 35;
+        let hp = 45;
+        let speed = 85;
+        let w = 44;
+        let h = 48;
+        let yPos = GROUND_Y + zOffset;
+
+        if (type === 'raptor') {
+            hp = 40;
+            speed = 115;
+            w = 46;
+            h = 44;
+        } else if (type === 'triceratops') {
+            hp = isBoss ? 240 : 95;
+            speed = isBoss ? 95 : 70;
+            w = 72;
+            h = 56;
+        } else if (type === 'pteranodon') {
+            hp = 38;
+            speed = 125;
+            w = 48;
+            h = 36;
+            yPos = GROUND_Y - 68 + zOffset * 0.4;
+        } else if (type === 'mosasaur') {
+            hp = isBoss ? 280 : 90;
+            speed = isBoss ? 105 : 90;
+            w = isBoss ? 115 : 85;
+            h = isBoss ? 68 : 52;
+            yPos = GROUND_Y + 16; // Emerges from water edge
+            sfx.splash();
+            spawnSplashParticles(worldX, GROUND_Y + 12);
+        } else if (type === 'trex') {
+            hp = 360;
+            speed = 82;
+            w = 110;
+            h = 106;
+            sfx.dinoRoar();
+            game.screenShake = 0.45;
+        }
+
+        const enemy = {
+            type,
+            isBoss,
+            x: worldX,
+            y: yPos,
+            baseY: yPos,
+            vx: 0,
+            vy: 0,
+            facing: -1,
+            hp,
+            maxHp: hp,
+            speed,
+            w,
+            h,
+            animTimer: Math.random() * 5,
+            hurtTimer: 0,
+            attackCooldown: 1.0 + Math.random() * 0.8,
+            aiState: 'approach',
+            aiTimer: 0
+        };
+
+        game.enemies.push(enemy);
+        if (isBoss) {
+            game.boss = enemy;
+            game.bannerText = `WARNING! ${STAGES[game.stageIdx].bossName}`;
+            game.bannerTimer = 2.4;
+        }
+    }
+
+    // ----------------------------------------------------------------------------
+    // 7. PARTICLES, HIT SPARKS & FLOATING NUMBERS
+    // ----------------------------------------------------------------------------
+    function spawnHitSpark(x, y, color1 = '#fef08a', color2 = '#38bdf8') {
+        for (let i = 0; i < 10; i++) {
+            const angle = (Math.PI * 2 * i) / 10 + Math.random() * 0.4;
+            const spd = 90 + Math.random() * 140;
+            game.particles.push({
+                x,
+                y,
+                vx: Math.cos(angle) * spd,
+                vy: Math.sin(angle) * spd,
+                size: 3 + Math.random() * 4,
+                color: i % 2 === 0 ? color1 : color2,
+                life: 0.24 + Math.random() * 0.1
+            });
+        }
+    }
+
+    function spawnSplashParticles(x, y) {
+        for (let i = 0; i < 14; i++) {
+            game.particles.push({
+                x: x + (Math.random() - 0.5) * 50,
+                y,
+                vx: (Math.random() - 0.5) * 160,
+                vy: -120 - Math.random() * 140,
+                size: 4 + Math.random() * 4,
+                color: i % 2 === 0 ? '#e0f2fe' : '#38bdf8',
+                life: 0.45,
+                gravity: 480
+            });
+        }
+    }
+
+    function spawnFloatingText(x, y, text, color = '#facc15') {
+        game.floatingTexts.push({
+            x,
+            y,
+            text,
+            color,
+            life: 0.75
+        });
+    }
+
+    // ----------------------------------------------------------------------------
+    // 8. PLAYER COMBAT & SPECIAL MOVES
+    // ----------------------------------------------------------------------------
+    function performMeleeHitbox(reachX, reachY, damage, knockbackX, knockbackY = 0, heavy = false) {
+        const p = game.player;
+        let hitAny = false;
+
+        game.enemies.forEach((e) => {
+            if (e.hp <= 0) return;
+            const dx = (e.x - p.x) * p.facing;
+            const dy = Math.abs((e.y - e.h * 0.4) - (p.y - 34));
+            if (dx >= -20 && dx <= reachX && dy <= reachY) {
+                damageEnemy(e, damage, p.facing * knockbackX, knockbackY, heavy);
+                hitAny = true;
+            }
+        });
+
+        if (hitAny) {
+            sfx.hitImpact(heavy);
+            game.screenShake = heavy ? 0.22 : 0.1;
+            p.comboCount++;
+            p.comboResetTimer = 2.2;
+            p.sp = Math.min(p.maxSp, p.sp + (heavy ? 12 : 8));
+        }
+    }
+
+    function damageEnemy(e, dmg, kbx, kby = 0, heavy = false) {
+        e.hp -= dmg;
+        e.hurtTimer = 0.16;
+        e.x += kbx * 0.35;
+        if (e.type !== 'trex' && !e.isBoss) {
+            e.vx = kbx;
+            if (kby !== 0) e.vy = kby;
+        }
+
+        const sparkColor = game.player.hero === 'linus' ? '#facc15' : '#38bdf8';
+        spawnHitSpark(e.x, e.y - e.h * 0.5, sparkColor, '#ffffff');
+        spawnFloatingText(e.x, e.y - e.h - 8, `-${dmg}`, heavy ? '#fb923c' : '#fde047');
+
+        if (e.hp <= 0) {
+            const pts = e.isBoss ? 2500 : (e.type === 'triceratops' || e.type === 'mosasaur' ? 400 : 150);
+            game.score += pts;
+            spawnFloatingText(e.x, e.y - e.h - 24, `+${pts}`, '#4ade80');
+            spawnHitSpark(e.x, e.y - e.h * 0.5, '#ef4444', '#facc15');
+            if (e.isBoss) {
+                game.boss = null;
+                game.screenShake = 0.45;
+                sfx.dinoRoar();
+            }
+        }
+    }
+
+    function damagePlayer(dmg, sourceX) {
+        const p = game.player;
+        if (p.invulnTimer > 0 || p.state === 'sp2') return;
+
+        p.hp = Math.max(0, p.hp - dmg);
+        p.invulnTimer = 1.05;
+        p.state = 'hurt';
+        p.stateTimer = 0.25;
+        p.vx = (p.x < sourceX ? -1 : 1) * 140;
+        p.comboCount = 0;
+
+        sfx.playerHurt();
+        game.screenShake = 0.22;
+        spawnHitSpark(p.x, p.y - 34, '#ef4444', '#ffffff');
+        spawnFloatingText(p.x, p.y - 68, `-${dmg}`, '#f87171');
+
+        if (p.hp <= 0) {
+            game.screen = 'gameover';
+        }
+    }
+
+    // ----------------------------------------------------------------------------
+    // 9. MAIN UPDATE LOOP
+    // ----------------------------------------------------------------------------
+    function update(dt) {
+        game.globalTime += dt;
+
+        // Handle Character Select Navigation
+        if (game.screen === 'select') {
+            if (justPressed['ArrowLeft'] || justPressed['KeyA']) {
+                game.selectedHero = 'linus';
+                sfx.selectBlip();
+            }
+            if (justPressed['ArrowRight'] || justPressed['KeyD']) {
+                game.selectedHero = 'ava';
+                sfx.selectBlip();
+            }
+            if (justPressed['Enter'] || justPressed['Space'] || justPressed['KeyZ']) {
+                startGame();
+            }
+            clearJustPressed();
+            return;
+        }
+
+        // Handle Victory / Game Over Restart
+        if (game.screen === 'victory' || game.screen === 'gameover') {
+            if (justPressed['Enter'] || justPressed['Space'] || justPressed['KeyZ']) {
+                startGame();
+            } else if (justPressed['KeyX'] || justPressed['Escape']) {
+                openHeroSelect();
+            }
+            clearJustPressed();
+            return;
+        }
+
+        // Stage Clear Transition
+        if (game.screen === 'stageClear') {
+            game.bannerTimer -= dt;
+            if (game.bannerTimer <= 0) {
+                if (game.stageIdx + 1 < STAGES.length) {
+                    loadStage(game.stageIdx + 1);
+                    game.screen = 'playing';
+                } else {
+                    game.screen = 'victory';
+                }
+            }
+            clearJustPressed();
+            return;
+        }
+
+        // === ACTIVE GAMEPLAY UPDATE ===
+        const p = game.player;
+        p.animTimer += dt;
+        if (p.invulnTimer > 0) p.invulnTimer -= dt;
+        if (game.screenShake > 0) game.screenShake -= dt;
+        if (game.bannerTimer > 0) game.bannerTimer -= dt;
+
+        // Regenerate Special Energy passively
+        p.sp = Math.min(p.maxSp, p.sp + dt * 11);
+
+        if (p.comboResetTimer > 0) {
+            p.comboResetTimer -= dt;
+            if (p.comboResetTimer <= 0) p.comboCount = 0;
+        }
+
+        // State timer countdown
+        if (p.stateTimer > 0) {
+            p.stateTimer -= dt;
+            if (p.stateTimer <= 0) {
+                p.state = (p.y < GROUND_Y + p.z) ? 'jump' : 'idle';
+            }
+        }
+
+        // Player Controls
+        const left = keys['ArrowLeft'] || keys['KeyA'];
+        const right = keys['ArrowRight'] || keys['KeyD'];
+        const up = keys['ArrowUp'] || keys['KeyW'];
+        const down = keys['ArrowDown'] || keys['KeyS'];
+        const atkPressed = justPressed['KeyZ'] || justPressed['KeyJ'];
+        const sp1Pressed = justPressed['KeyX'] || justPressed['KeyK'];
+        const sp2Pressed = justPressed['KeyC'] || justPressed['KeyL'];
+
+        const canAct = (p.state === 'idle' || p.state === 'walk' || p.state === 'jump');
+
+        if (canAct) {
+            // Horizontal Movement
+            const moveSpeed = p.hero === 'ava' ? 205 : 180;
+            if (left) {
+                p.vx = -moveSpeed;
+                p.facing = -1;
+            } else if (right) {
+                p.vx = moveSpeed;
+                p.facing = 1;
+            } else {
+                p.vx = 0;
+            }
+
+            // Lane Depth / Jump Controls
+            const isGrounded = Math.abs(p.y - (GROUND_Y + p.z)) < 2 && p.vy === 0;
+            if (down && isGrounded) {
+                p.z = Math.min(14, p.z + 110 * dt);
+                p.y = GROUND_Y + p.z;
+            }
+
+            // Up Arrow / W: Move deeper into lane OR Jump when tapped/held
+            if (up && isGrounded) {
+                if (p.z > -32 && !justPressed['ArrowUp'] && !justPressed['KeyW']) {
+                    p.z = Math.max(-32, p.z - 110 * dt);
+                    p.y = GROUND_Y + p.z;
+                } else {
+                    p.vy = -375;
+                    p.state = 'jump';
+                    sfx.jump();
+                }
+            }
+
+            if (isGrounded && p.state !== 'jump') {
+                p.state = (Math.abs(p.vx) > 5 || down) ? 'walk' : 'idle';
+            }
+
+            // Basic Attack (Z / J)
+            if (atkPressed) {
+                p.state = 'attack';
+                p.stateTimer = 0.22;
+                p.vx = p.facing * 55;
+                sfx.attackSwing();
+                performMeleeHitbox(76, 46, p.hero === 'linus' ? 18 : 15, 110, 0, false);
+            }
+
+            // Special Attack 1 (X / K) — Sonic Boom (Linus) / Lightning Legs (Ava)
+            if (sp1Pressed && p.sp >= 25) {
+                p.sp -= 25;
+                p.state = 'sp1';
+                p.stateTimer = 0.34;
+                if (p.hero === 'linus') {
+                    // SONIC BOOM Projectile
+                    sfx.sonicBoom();
+                    p.vx = -p.facing * 30;
+                    game.projectiles.push({
+                        type: 'sonicBoom',
+                        x: p.x + p.facing * 28,
+                        y: p.y - 36,
+                        vx: p.facing * 410,
+                        facing: p.facing,
+                        damage: 32,
+                        life: 1.4
+                    });
+                    spawnFloatingText(p.x, p.y - 76, 'SONIC BOOM!', '#fde047');
+                } else {
+                    // LIGHTNING LEGS Rapid Flurry
+                    sfx.lightningLegs();
+                    p.vx = p.facing * 90;
+                    performMeleeHitbox(92, 52, 30, 140, 0, true);
+                    spawnFloatingText(p.x, p.y - 76, 'LIGHTNING LEGS!', '#38bdf8');
+                }
+            }
+
+            // Special Attack 2 (C / L) — Flash Kick (Linus) / Kikoken & Spinning Bird Kick (Ava)
+            if (sp2Pressed && p.sp >= 35) {
+                p.sp -= 35;
+                p.state = 'sp2';
+                p.stateTimer = 0.44;
+                if (p.hero === 'linus') {
+                    // FLASH KICK Somersault Launch
+                    sfx.flashKick();
+                    p.vy = -360;
+                    p.vx = p.facing * 150;
+                    performMeleeHitbox(88, 78, 38, 175, -180, true);
+                    spawnFloatingText(p.x, p.y - 80, 'FLASH KICK!', '#facc15');
+                } else {
+                    // KIKOKEN + SPINNING BIRD KICK Dash
+                    sfx.kikoken();
+                    p.vy = -210;
+                    p.vx = p.facing * 260;
+                    game.projectiles.push({
+                        type: 'kikoken',
+                        x: p.x + p.facing * 26,
+                        y: p.y - 34,
+                        vx: p.facing * 360,
+                        facing: p.facing,
+                        damage: 28,
+                        life: 1.2
+                    });
+                    performMeleeHitbox(82, 54, 24, 150, 0, true);
+                    spawnFloatingText(p.x, p.y - 80, 'SPINNING KICK!', '#7dd3fc');
+                }
+            }
+        }
+
+        // Apply Player Physics
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        const floorY = GROUND_Y + p.z;
+        if (p.y < floorY) {
+            p.vy += 980 * dt;
+        } else {
+            p.y = floorY;
+            p.vy = 0;
+            if (p.state === 'jump') p.state = 'idle';
+        }
+
+        // Camera Scrolling & Arena Bounds
+        const stage = STAGES[game.stageIdx];
+        if (!game.waveLocked) {
+            const targetCam = Math.max(game.cameraX, p.x - W * 0.36);
+            game.cameraX = Math.min(stage.length - W, targetCam);
+        }
+        p.x = Math.max(game.cameraX + 28, Math.min(game.cameraX + W - 28, p.x));
+
+        // Check Wave Triggers
+        if (!game.waveLocked && game.waveIdx < stage.waves.length) {
+            const nextWave = stage.waves[game.waveIdx];
+            if (p.x >= nextWave.triggerX) {
+                game.waveLocked = true;
+                if (nextWave.boss) {
+                    spawnEnemy(stage.bossType, game.cameraX + W + 40, true);
+                } else {
+                    nextWave.enemies.forEach((en) => {
+                        spawnEnemy(en.type, game.cameraX + en.offset + 280, en.isBoss || false);
+                    });
+                }
+            }
+        }
+
+        // Unlock Wave when all enemies defeated
+        if (game.waveLocked && game.enemies.length === 0) {
+            game.waveLocked = false;
+            game.waveIdx++;
+            if (game.waveIdx >= stage.waves.length) {
+                // Stage Completed!
+                sfx.stageClear();
+                game.score += 1000;
+                game.screen = 'stageClear';
+                game.bannerText = `${stage.name} CLEAR!`;
+                game.bannerTimer = 2.6;
+            } else {
+                game.bannerText = 'GO! ➔';
+                game.bannerTimer = 1.2;
+            }
+        }
+
+        // Update Projectiles
+        for (let i = game.projectiles.length - 1; i >= 0; i--) {
+            const proj = game.projectiles[i];
+            proj.x += proj.vx * dt;
+            proj.life -= dt;
+
+            // Check enemy collisions
+            let hit = false;
+            for (const e of game.enemies) {
+                if (e.hp <= 0) continue;
+                if (Math.abs(proj.x - e.x) < e.w * 0.55 && Math.abs(proj.y - (e.y - e.h * 0.45)) < e.h * 0.65) {
+                    damageEnemy(e, proj.damage, proj.facing * 140, 0, true);
+                    sfx.hitImpact(true);
+                    hit = true;
+                    break;
+                }
+            }
+
+            if (hit || proj.life <= 0 || proj.x < game.cameraX - 60 || proj.x > game.cameraX + W + 60) {
+                game.projectiles.splice(i, 1);
+            }
+        }
+
+        // Update Enemies AI
+        for (let i = game.enemies.length - 1; i >= 0; i--) {
+            const e = game.enemies[i];
+            if (e.hp <= 0) {
+                game.enemies.splice(i, 1);
+                continue;
+            }
+
+            e.animTimer += dt;
+            if (e.hurtTimer > 0) e.hurtTimer -= dt;
+            if (e.attackCooldown > 0) e.attackCooldown -= dt;
+
+            const dx = p.x - e.x;
+            const dy = p.y - e.y;
+            e.facing = dx >= 0 ? 1 : -1;
+
+            if (e.hurtTimer <= 0) {
+                if (e.type === 'pteranodon') {
+                    // Swoop pattern
+                    e.x += e.facing * e.speed * dt;
+                    e.y = e.baseY + Math.sin(e.animTimer * 4) * 38;
+                } else if (e.type === 'mosasaur') {
+                    // Aquatic lunge along shoreline
+                    e.x += e.facing * e.speed * dt;
+                    if (Math.abs(dx) < 115 && e.attackCooldown <= 0) {
+                        e.vy = -260;
+                        e.attackCooldown = 2.0;
+                        sfx.splash();
+                        spawnSplashParticles(e.x, e.baseY);
+                    }
+                    e.y += e.vy * dt;
+                    if (e.y < e.baseY) {
+                        e.vy += 680 * dt;
+                    } else {
+                        e.y = e.baseY;
+                        e.vy = 0;
+                    }
+                } else {
+                    // Ground Dinosaurs (Raptor, Triceratops, T-Rex)
+                    if (Math.abs(dx) > e.w * 0.55) {
+                        e.x += e.facing * e.speed * dt;
+                    }
+                    if (Math.abs(dy) > 6) {
+                        e.y += Math.sign(dy) * (e.speed * 0.45) * dt;
+                    }
+                }
+
+                // Enemy Melee Attack Check
+                const hitRangeX = e.w * 0.55 + 16;
+                const hitRangeY = 34;
+                if (Math.abs(dx) < hitRangeX && Math.abs(p.y - e.y) < hitRangeY && e.attackCooldown <= 0) {
+                    const dmg = e.type === 'trex' ? 18 : (e.isBoss ? 14 : 10);
+                    damagePlayer(dmg, e.x);
+                    e.attackCooldown = e.type === 'raptor' ? 1.1 : 1.5;
+                }
+            } else {
+                e.x += e.vx * dt;
+                e.vx *= 0.85;
+            }
+        }
+
+        // Update Particles
+        for (let i = game.particles.length - 1; i >= 0; i--) {
+            const pt = game.particles[i];
+            pt.x += pt.vx * dt;
+            pt.y += pt.vy * dt;
+            if (pt.gravity) pt.vy += pt.gravity * dt;
+            pt.life -= dt;
+            if (pt.life <= 0) game.particles.splice(i, 1);
+        }
+
+        // Update Floating Texts
+        for (let i = game.floatingTexts.length - 1; i >= 0; i--) {
+            const ft = game.floatingTexts[i];
+            ft.y -= 36 * dt;
+            ft.life -= dt;
+            if (ft.life <= 0) game.floatingTexts.splice(i, 1);
+        }
+
+        clearJustPressed();
+    }
+
+    function clearJustPressed() {
+        for (const k in justPressed) {
+            delete justPressed[k];
+        }
+    }
+
+    // ----------------------------------------------------------------------------
+    // 10. RENDERING PIPELINE (HUD, CHARACTER SELECT, STAGE & ENTITIES)
+    // ----------------------------------------------------------------------------
+    function drawArcadePortrait(hero, x, y, size = 34) {
+        pxRect(x, y, size, size, '#1e293b', '#ffffff');
+        if (hero === 'linus') {
+            // Linus SF2-style HUD Mugshot
+            pxRect(x + 4, y + 3, size - 8, 8, '#facc15', '#0f172a'); // Blonde flat-top
+            pxRect(x + 6, y + 10, size - 12, size - 13, '#f5b076', '#0f172a'); // Face
+            pxRect(x + 9, y + 14, 14, 2, '#422006'); // Brow
+            pxRect(x + 10, y + 17, 4, 3, '#ffffff');
+            pxRect(x + 19, y + 17, 4, 3, '#ffffff');
+            pxRect(x + 11, y + 24, 10, 3, '#ffffff'); // Grin
+        } else {
+            // Ava SF2-style HUD Mugshot
+            pxRect(x + 3, y + 4, 7, 7, '#f8fafc', '#0f172a'); // Left bun
+            pxRect(x + size - 10, y + 4, 7, 7, '#f8fafc', '#0f172a'); // Right bun
+            pxRect(x + 7, y + 7, size - 14, 7, '#3b2014'); // Hair
+            pxRect(x + 8, y + 12, size - 16, size - 15, '#f5b076', '#0f172a'); // Face
+            pxRect(x + 10, y + 17, 4, 4, '#1e1b4b'); // Eyes
+            pxRect(x + 19, y + 17, 4, 4, '#1e1b4b');
+            pxRect(x + 13, y + 25, 6, 2, '#be123c'); // Smile
+        }
+    }
+
+    function drawSF2HUD() {
+        const p = game.player;
+        const heroName = p.hero === 'linus' ? 'LINUS' : 'AVA';
+
+        // Left Player Portrait & Name
+        drawArcadePortrait(p.hero, 12, 10, 34);
+        drawPixelText(heroName, 54, 10, 12, '#facc15');
+        drawPixelText(`SCORE ${String(game.score).padStart(6, '0')}`, 54, 42, 9, '#e2e8f0');
+
+        // Classic SF2 Yellow/Red Health Bar
+        const barX = 54;
+        const barY = 25;
+        const barW = 210;
+        const barH = 12;
+        pxRect(barX, barY, barW, barH, '#dc2626', '#ffffff');
+        const hpRatio = Math.max(0, p.hp / p.maxHp);
+        pxRect(barX, barY, barW * hpRatio, barH, hpRatio < 0.25 ? '#fb923c' : '#facc15');
+
+        // Special Energy Gauge (SP Meter)
+        pxRect(barX, barY + 14, 130, 5, '#0f172a', '#64748b');
+        pxRect(barX, barY + 14, 130 * (p.sp / p.maxSp), 5, p.sp >= 35 ? '#38bdf8' : '#0284c7');
+
+        // Combo Badge
+        if (p.comboCount >= 2) {
+            drawPixelText(`${p.comboCount} HITS!`, 54, 56, 10, '#4ade80');
+        }
+
+        // Center Stage Indicator
+        drawPixelText(`STAGE ${game.stageIdx + 1}`, W / 2, 11, 11, '#facc15', 'center');
+        drawPixelText(STAGES[game.stageIdx].name.split(': ')[1], W / 2, 26, 8, '#cbd5e1', 'center');
+
+        // Right Side: Boss Health Bar OR Stage Progress Bar
+        if (game.boss && game.boss.hp > 0) {
+            const bW = 210;
+            const bX = W - 54 - bW;
+            drawPixelText(STAGES[game.stageIdx].bossName, W - 54, 10, 9, '#f87171', 'right');
+            pxRect(bX, 25, bW, 12, '#450a0a', '#ffffff');
+            const bRatio = Math.max(0, game.boss.hp / game.boss.maxHp);
+            pxRect(bX + bW * (1 - bRatio), 25, bW * bRatio, 12, '#ef4444');
+            // Dino Boss Icon
+            pxRect(W - 46, 10, 34, 34, '#7f1d1d', '#ffffff');
+            pxRect(W - 38, 18, 18, 16, '#ef4444');
+            pxRect(W - 34, 21, 4, 4, '#facc15');
+        } else {
+            const prog = Math.min(1, p.x / STAGES[game.stageIdx].length);
+            drawPixelText(game.waveLocked ? 'DEFEAT DINOS!' : 'ADVANCE ➔', W - 16, 12, 9, game.waveLocked ? '#f87171' : '#4ade80', 'right');
+            pxRect(W - 156, 26, 140, 8, '#1e293b', '#94a3b8');
+            pxRect(W - 156, 26, 140 * prog, 8, '#22c55e');
+        }
+
+        // Center Screen Banner ("STAGE 1", "WARNING!", "GO!")
+        if (game.bannerTimer > 0) {
+            const pulse = Math.sin(game.globalTime * 14) > 0 ? '#facc15' : '#ffffff';
+            drawPixelText(game.bannerText, W / 2, H * 0.42, 16, pulse, 'center');
+        }
+    }
+
+    function drawCharacterSelectScreen() {
+        // Dark Blue SNES Arcade Grid Background
+        ctx.fillStyle = '#090d16';
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 2;
+        const gridOffset = (game.globalTime * 24) % 32;
+        for (let x = -32; x < W + 32; x += 32) {
+            ctx.beginPath();
+            ctx.moveTo(x + gridOffset, 0);
+            ctx.lineTo(x + gridOffset, H);
+            ctx.stroke();
+        }
+        for (let y = -32; y < H + 32; y += 32) {
+            ctx.beginPath();
+            ctx.moveTo(0, y + gridOffset);
+            ctx.lineTo(W, y + gridOffset);
+            ctx.stroke();
+        }
+
+        // Title Header
+        drawPixelText('DINO CLASH: LINUS & AVA', W / 2, 16, 16, '#facc15', 'center');
+        drawPixelText('SELECT YOUR HERO', W / 2, 42, 11, '#38bdf8', 'center');
+
+        // Two Hero Selection Cards
+        const cards = [
+            {
+                id: 'linus',
+                x: 42,
+                name: 'LINUS',
+                title: 'SONIC COMMANDO',
+                sp1: 'SP1: SONIC BOOM',
+                sp2: 'SP2: FLASH KICK',
+                stats: 'PWR ★★★★★  SPD ★★★★☆',
+                accent: '#22c55e'
+            },
+            {
+                id: 'ava',
+                x: 334,
+                name: 'AVA',
+                title: 'LIGHTNING STRIKER',
+                sp1: 'SP1: LIGHTNING LEGS',
+                sp2: 'SP2: SPINNING KICK',
+                stats: 'PWR ★★★★☆  SPD ★★★★★',
+                accent: '#3b82f6'
+            }
+        ];
+
+        cards.forEach((c) => {
+            const isSel = game.selectedHero === c.id;
+            const cardY = 66;
+            const cardW = 264;
+            const cardH = 248;
+
+            // Card Box
+            pxRect(c.x, cardY, cardW, cardH, isSel ? '#1e293b' : '#0f172a', isSel ? '#facc15' : '#475569');
+            if (isSel) {
+                ctx.strokeStyle = '#facc15';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(c.x - 3, cardY - 3, cardW + 6, cardH + 6);
+                drawPixelText('▼ 1P READY ▼', c.x + cardW / 2, cardY - 12, 8, '#facc15', 'center');
+            }
+
+            // Stage Floor Pedestal inside card
+            pxRect(c.x + 16, cardY + 22, cardW - 32, 108, '#0284c7', '#0f172a');
+            pxRect(c.x + 16, cardY + 104, cardW - 32, 26, '#64748b');
+
+            // Animated Live Pixel Hero Preview
+            ctx.save();
+            ctx.translate(c.x + cardW / 2, cardY + 116);
+            ctx.scale(1.25, 1.25);
+            if (c.id === 'linus') {
+                drawLinusSprite(0, 0, 1, isSel ? 'walk' : 'idle', game.globalTime, false);
+            } else {
+                drawAvaSprite(0, 0, 1, isSel ? 'walk' : 'idle', game.globalTime, false);
+            }
+            ctx.restore();
+
+            // Hero Name & Move List
+            drawPixelText(c.name, c.x + cardW / 2, cardY + 138, 14, isSel ? '#facc15' : '#ffffff', 'center');
+            drawPixelText(c.title, c.x + cardW / 2, cardY + 157, 8, '#94a3b8', 'center');
+            drawPixelText(c.sp1, c.x + 14, cardY + 175, 8, '#fde047');
+            drawPixelText(c.sp2, c.x + 14, cardY + 190, 8, '#7dd3fc');
+            drawPixelText(c.stats, c.x + 14, cardY + 206, 7, '#cbd5e1');
+
+            // Clickable START Button on card
+            pxRect(c.x + 28, cardY + 221, cardW - 56, 20, isSel ? '#16a34a' : '#334155', '#ffffff');
+            drawPixelText(isSel ? 'PLAY AS ' + c.name : 'SELECT ' + c.name, c.x + cardW / 2, cardY + 227, 8, '#ffffff', 'center');
+        });
+
+        drawPixelText('TAP HERO OR PRESS [ENTER / Z] TO START!', W / 2, 332, 9, '#4ade80', 'center');
+    }
+
+    function drawEndOverlay(isVictory) {
+        ctx.fillStyle = 'rgba(9, 13, 22, 0.84)';
+        ctx.fillRect(0, 0, W, H);
+
+        if (isVictory) {
+            drawPixelText('MISSION COMPLETE!', W / 2, 54, 20, '#facc15', 'center');
+            drawPixelText('THE PREHISTORIC MENACE IS DEFEATED!', W / 2, 88, 10, '#38bdf8', 'center');
+        } else {
+            drawPixelText('GAME OVER', W / 2, 60, 24, '#ef4444', 'center');
+            drawPixelText('THE DINOSAURS OVERRAN THE BASE...', W / 2, 96, 10, '#cbd5e1', 'center');
+        }
+
+        // Hero Portrait & Final Score
+        drawArcadePortrait(game.selectedHero, W / 2 - 22, 124, 44);
+        drawPixelText(`FINAL SCORE: ${String(game.score).padStart(6, '0')}`, W / 2, 184, 13, '#4ade80', 'center');
+
+        // Two Action Boxes (Left = Play Again, Right = Switch Hero)
+        pxRect(66, 232, 230, 46, '#16a34a', '#ffffff');
+        drawPixelText('PLAY AGAIN [Z]', 181, 250, 10, '#ffffff', 'center');
+
+        pxRect(344, 232, 230, 46, '#2563eb', '#ffffff');
+        drawPixelText('SWITCH HERO [X]', 459, 250, 10, '#ffffff', 'center');
+    }
+
+    function render() {
+        ctx.clearRect(0, 0, W, H);
+
+        if (game.screen === 'select') {
+            drawCharacterSelectScreen();
+            return;
+        }
+
+        ctx.save();
+        // Screen shake effect
+        if (game.screenShake > 0) {
+            const mag = game.screenShake * 18;
+            ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+        }
+
+        // 1. Background
+        drawStageBackground(game.stageIdx, game.cameraX, game.globalTime);
+
+        // 2. World Space Entities (Depth Sorted by Y)
+        ctx.save();
+        ctx.translate(-Math.round(game.cameraX), 0);
+
+        const renderList = [];
+        renderList.push({ y: game.player.y, type: 'player' });
+        game.enemies.forEach((e) => renderList.push({ y: e.y, type: 'enemy', ref: e }));
+        renderList.sort((a, b) => a.y - b.y);
+
+        renderList.forEach((item) => {
+            if (item.type === 'player') {
+                const p = game.player;
+                if (p.hero === 'linus') {
+                    drawLinusSprite(p.x, p.y, p.facing, p.state, p.animTimer, p.invulnTimer > 0);
+                } else {
+                    drawAvaSprite(p.x, p.y, p.facing, p.state, p.animTimer, p.invulnTimer > 0);
+                }
+            } else {
+                drawEnemySprite(item.ref);
+            }
+        });
+
+        // 3. Special Attack Projectiles (Sonic Boom & Kikoken)
+        game.projectiles.forEach((proj) => {
+            ctx.save();
+            ctx.translate(Math.round(proj.x), Math.round(proj.y));
+            if (proj.facing < 0) ctx.scale(-1, 1);
+
+            if (proj.type === 'sonicBoom') {
+                // Crescent Sonic Boom Wave
+                ctx.fillStyle = '#fef08a';
+                ctx.beginPath();
+                ctx.arc(0, 0, 22, -Math.PI * 0.45, Math.PI * 0.45);
+                ctx.lineTo(-8, 0);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            } else {
+                // Kikoken Energy Sphere
+                const pulse = 13 + Math.sin(game.globalTime * 30) * 3;
+                ctx.fillStyle = '#38bdf8';
+                ctx.beginPath();
+                ctx.arc(0, 0, pulse, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(2, 0, pulse * 0.55, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        });
+
+        // 4. Particles & Hit Sparks
+        game.particles.forEach((pt) => {
+            pxRect(pt.x - pt.size / 2, pt.y - pt.size / 2, pt.size, pt.size, pt.color);
+        });
+
+        // 5. Floating Score / Damage Numbers
+        game.floatingTexts.forEach((ft) => {
+            drawPixelText(ft.text, ft.x, ft.y, 9, ft.color, 'center');
+        });
+
+        ctx.restore();
+        ctx.restore();
+
+        // 6. Fixed Top Arcade HUD
+        drawSF2HUD();
+
+        // 7. End Screen Overlays
+        if (game.screen === 'victory') {
+            drawEndOverlay(true);
+        } else if (game.screen === 'gameover') {
+            drawEndOverlay(false);
+        }
+    }
+
+    // ----------------------------------------------------------------------------
+    // 11. BOOTSTRAP ANIMATION LOOP ON WINDOW LOAD
+    // ----------------------------------------------------------------------------
+    let lastTime = 0;
+    function gameLoop(timestamp) {
+        if (!lastTime) lastTime = timestamp;
+        const dt = Math.min(0.05, (timestamp - lastTime) / 1000);
+        lastTime = timestamp;
+
+        update(dt);
+        render();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    window.onload = function () {
+        requestAnimationFrame(gameLoop);
+    };
+    </script>
+</body>
+</html>
